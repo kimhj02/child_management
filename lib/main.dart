@@ -1,11 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:roulette/roulette.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(const StudentShopApp());
@@ -96,32 +95,26 @@ class LocalDataPayload {
 }
 
 class LocalDataStore {
-  LocalDataStore({this.fileName = 'student_shop_data.json'});
+  LocalDataStore({SharedPreferences? preferences})
+      : _preferences = preferences;
 
-  final String fileName;
-  File? _cachedFile;
+  final SharedPreferences? _preferences;
 
-  Future<File> _ensureFile() async {
-    if (_cachedFile != null) {
-      return _cachedFile!;
+  static const String _storageKey = 'student_shop_data';
+
+  Future<SharedPreferences> _ensurePreferences() async {
+    final existing = _preferences;
+    if (existing != null) {
+      return existing;
     }
-
-    final directory = await getApplicationDocumentsDirectory();
-    final file = File('${directory.path}/$fileName');
-    if (!await file.exists()) {
-      await file.create(recursive: true);
-      await file.writeAsString(jsonEncode(_emptyPayload), flush: true);
-    }
-
-    _cachedFile = file;
-    return file;
+    return SharedPreferences.getInstance();
   }
 
   Future<LocalDataPayload> load() async {
     try {
-      final file = await _ensureFile();
-      final raw = await file.readAsString();
-      if (raw.trim().isEmpty) {
+      final prefs = await _ensurePreferences();
+      final raw = prefs.getString(_storageKey);
+      if (raw == null || raw.trim().isEmpty) {
         return LocalDataPayload.empty();
       }
 
@@ -147,21 +140,16 @@ class LocalDataStore {
     required List<StoreItem> storeItems,
   }) async {
     try {
-      final file = await _ensureFile();
+      final prefs = await _ensurePreferences();
       final payload = {
         'students': students.map((student) => student.toJson()).toList(),
         'storeItems': storeItems.map((item) => item.toJson()).toList(),
       };
-      await file.writeAsString(jsonEncode(payload), flush: true);
+      await prefs.setString(_storageKey, jsonEncode(payload));
     } catch (_) {
       // 저장 실패 시 조용히 무시 (단일 PC 사용 시 치명적이지 않음)
     }
   }
-
-  static const Map<String, dynamic> _emptyPayload = {
-    'students': <Map<String, dynamic>>[],
-    'storeItems': <Map<String, dynamic>>[],
-  };
 
   List<Student> _decodeStudents(dynamic value) {
     if (value is! List) {
@@ -554,7 +542,7 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
   }
 
   Widget _buildStudentSection() {
-    const maxPoints = 20;
+    const maxPoints = 100;
 
     return Card(
       elevation: 3,
@@ -595,7 +583,7 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
             const SizedBox(height: 12),
             const Divider(height: 24),
             const Text(
-              '학생 포인트 현황 (최대 20점)',
+              '학생 포인트 현황 (최대 100점)',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 12),
