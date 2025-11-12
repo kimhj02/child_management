@@ -12,7 +12,12 @@ void main() {
 }
 
 class StudentShopApp extends StatelessWidget {
-  const StudentShopApp({super.key});
+  const StudentShopApp({
+    super.key,
+    this.dataStore,
+  });
+
+  final LocalDataStore? dataStore;
 
   @override
   Widget build(BuildContext context) {
@@ -25,7 +30,9 @@ class StudentShopApp extends StatelessWidget {
           behavior: SnackBarBehavior.floating,
         ),
       ),
-      home: const StudentShopHomePage(),
+      home: StudentShopHomePage(
+        dataStore: dataStore,
+      ),
     );
   }
 }
@@ -204,7 +211,12 @@ class LocalDataStore {
 }
 
 class StudentShopHomePage extends StatefulWidget {
-  const StudentShopHomePage({super.key});
+  const StudentShopHomePage({
+    super.key,
+    this.dataStore,
+  });
+
+  final LocalDataStore? dataStore;
 
   @override
   State<StudentShopHomePage> createState() => _StudentShopHomePageState();
@@ -213,7 +225,7 @@ class StudentShopHomePage extends StatefulWidget {
 class _StudentShopHomePageState extends State<StudentShopHomePage> {
   final List<Student> _students = [];
   final List<StoreItem> _storeItems = [];
-  final LocalDataStore _dataStore = LocalDataStore();
+  late final LocalDataStore _dataStore;
 
   final TextEditingController _studentNameController = TextEditingController();
 
@@ -241,6 +253,7 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
   @override
   void initState() {
     super.initState();
+    _dataStore = widget.dataStore ?? LocalDataStore();
     _loadInitialData();
   }
 

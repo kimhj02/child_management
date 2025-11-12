@@ -10,21 +10,34 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:child_management/main.dart';
 
+class _FakeLocalDataStore extends LocalDataStore {
+  _FakeLocalDataStore({LocalDataPayload? payload})
+      : _payload = payload ?? LocalDataPayload.empty();
+
+  final LocalDataPayload _payload;
+
+  @override
+  Future<LocalDataPayload> load() async => _payload;
+
+  @override
+  Future<void> save({
+    required List<Student> students,
+    required List<StoreItem> storeItems,
+  }) async {}
+}
+
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const StudentShopApp());
+  testWidgets('앱이 기본 화면을 표시한다', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      StudentShopApp(
+        dataStore: _FakeLocalDataStore(),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 1));
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('학생 상점 관리자'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('학생 관리'), findsOneWidget);
+    expect(find.text('상점 룰렛'), findsOneWidget);
   });
 }
