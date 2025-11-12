@@ -437,19 +437,17 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
         offset: offset,
       );
     } finally {
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _isSpinning = false;
-        if (rollCompleted) {
-          final latestItems = _activeStoreItems();
-          if (targetIndex < latestItems.length) {
-            _rouletteResult = latestItems[targetIndex].name;
+      if (mounted) {
+        setState(() {
+          _isSpinning = false;
+          if (rollCompleted) {
+            final latestItems = _activeStoreItems();
+            if (targetIndex < latestItems.length) {
+              _rouletteResult = latestItems[targetIndex].name;
+            }
           }
-        }
-      });
+        });
+      }
     }
   }
 
@@ -640,7 +638,7 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
                       Container(
                         height: 20,
                         decoration: BoxDecoration(
-                          color: Colors.teal.withOpacity(0.12),
+                          color: Colors.teal.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(10),
                         ),
                       ),
@@ -980,7 +978,7 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.16),
+            color: Colors.black.withValues(alpha: 0.16),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
