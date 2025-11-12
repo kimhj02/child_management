@@ -35,7 +35,7 @@ jobs:
         run: flutter test
 
       - name: Build web release
-        run: flutter build web --release
+        run: flutter build web --release --base-href /child_management/
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
