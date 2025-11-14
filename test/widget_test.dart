@@ -22,6 +22,8 @@ class _FakeLocalDataStore extends LocalDataStore {
   Future<void> save({
     required List<Student> students,
     required List<StoreItem> storeItems,
+    required List<RewardGoal> rewardGoals,
+    required int totalScore,
   }) async {}
 }
 

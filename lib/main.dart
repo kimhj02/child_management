@@ -80,18 +80,48 @@ class StoreItem {
   }
 }
 
+class RewardGoal {
+  RewardGoal({
+    required this.targetScore,
+    required this.reward,
+  });
+
+  final int targetScore;
+  String reward;
+
+  factory RewardGoal.fromJson(Map<String, dynamic> json) {
+    return RewardGoal(
+      targetScore: (json['targetScore'] as num?)?.toInt() ?? 0,
+      reward: json['reward'] as String? ?? '',
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'targetScore': targetScore,
+      'reward': reward,
+    };
+  }
+}
+
 class LocalDataPayload {
   LocalDataPayload({
     required this.students,
     required this.storeItems,
+    required this.rewardGoals,
+    this.totalScore = 0,
   });
 
   LocalDataPayload.empty()
       : students = const [],
-        storeItems = const [];
+        storeItems = const [],
+        rewardGoals = const [],
+        totalScore = 0;
 
   final List<Student> students;
   final List<StoreItem> storeItems;
+  final List<RewardGoal> rewardGoals;
+  final int totalScore;
 }
 
 class LocalDataStore {
@@ -125,10 +155,14 @@ class LocalDataStore {
 
       final studentList = decoded['students'];
       final storeItemList = decoded['storeItems'];
+      final rewardGoalList = decoded['rewardGoals'];
+      final totalScore = (decoded['totalScore'] as num?)?.toInt() ?? 0;
 
       return LocalDataPayload(
         students: _decodeStudents(studentList),
         storeItems: _decodeStoreItems(storeItemList),
+        rewardGoals: _decodeRewardGoals(rewardGoalList),
+        totalScore: totalScore,
       );
     } catch (_) {
       return LocalDataPayload.empty();
@@ -138,12 +172,16 @@ class LocalDataStore {
   Future<void> save({
     required List<Student> students,
     required List<StoreItem> storeItems,
+    required List<RewardGoal> rewardGoals,
+    required int totalScore,
   }) async {
     try {
       final prefs = await _ensurePreferences();
       final payload = {
         'students': students.map((student) => student.toJson()).toList(),
         'storeItems': storeItems.map((item) => item.toJson()).toList(),
+        'rewardGoals': rewardGoals.map((goal) => goal.toJson()).toList(),
+        'totalScore': totalScore,
       };
       await prefs.setString(_storageKey, jsonEncode(payload));
     } catch (_) {
@@ -196,6 +234,29 @@ class LocalDataStore {
         .whereType<StoreItem>()
         .toList();
   }
+
+  List<RewardGoal> _decodeRewardGoals(dynamic value) {
+    if (value is! List) {
+      return [];
+    }
+
+    return value
+        .map((element) {
+          if (element is Map<String, dynamic>) {
+            return RewardGoal.fromJson(element);
+          }
+          if (element is Map) {
+            return RewardGoal.fromJson(
+              element.map(
+                (key, val) => MapEntry(key.toString(), val),
+              ),
+            );
+          }
+          return null;
+        })
+        .whereType<RewardGoal>()
+        .toList();
+  }
 }
 
 class StudentShopHomePage extends StatefulWidget {
@@ -213,11 +274,16 @@ class StudentShopHomePage extends StatefulWidget {
 class _StudentShopHomePageState extends State<StudentShopHomePage> {
   final List<Student> _students = [];
   final List<StoreItem> _storeItems = [];
+  final List<RewardGoal> _rewardGoals = [];
+  int _totalScore = 0;
   late final LocalDataStore _dataStore;
 
   final TextEditingController _studentNameController = TextEditingController();
 
   final TextEditingController _itemNameController = TextEditingController();
+  
+  final TextEditingController _rewardGoalScoreController = TextEditingController();
+  final TextEditingController _rewardGoalRewardController = TextEditingController();
 
   final RouletteController _rouletteController = RouletteController();
   final Random _random = Random();
@@ -249,6 +315,8 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
   void dispose() {
     _studentNameController.dispose();
     _itemNameController.dispose();
+    _rewardGoalScoreController.dispose();
+    _rewardGoalRewardController.dispose();
     _rouletteController.dispose();
     super.dispose();
   }
@@ -279,6 +347,23 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
             return restored;
           }),
         );
+      _rewardGoals
+        ..clear()
+        ..addAll(
+          payload.rewardGoals.map((goal) {
+            final restored = RewardGoal(
+              targetScore: goal.targetScore,
+              reward: goal.reward,
+            );
+            return restored;
+          }),
+        );
+      // 기존 데이터 마이그레이션: totalScore가 없으면 학생 포인트 합으로 초기화
+      if (payload.totalScore == 0 && payload.students.isNotEmpty) {
+        _totalScore = payload.students.fold(0, (sum, student) => sum + student.points);
+      } else {
+        _totalScore = payload.totalScore;
+      }
       _isDataLoaded = true;
     });
   }
@@ -300,6 +385,13 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
             return copy;
           })
           .toList(growable: false),
+      rewardGoals: _rewardGoals
+          .map((goal) => RewardGoal(
+                targetScore: goal.targetScore,
+                reward: goal.reward,
+              ))
+          .toList(growable: false),
+      totalScore: _totalScore,
     );
   }
 
@@ -331,6 +423,8 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
     }
 
     setState(() {
+      // 학생 삭제 시 그 학생의 포인트만큼 total_score에서 차감
+      _totalScore = max(0, _totalScore - student.points);
       _students.remove(student);
     });
     unawaited(_persistData());
@@ -452,7 +546,7 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
     }
   }
 
-  void _adjustStudentPoints(Student student, int delta) {
+  void _adjustStudentPoints(Student student, int delta, {bool isRoulette = false}) {
     if (!_isDataLoaded) {
       return;
     }
@@ -471,6 +565,10 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
 
     setState(() {
       student.points = updated;
+      // 룰렛 사용 시에는 total_score를 유지, 일반 포인트 변경 시에는 total_score도 변경
+      if (!isRoulette) {
+        _totalScore = max(0, _totalScore + actualDelta);
+      }
     });
 
     if (actualDelta == 0) {
@@ -492,35 +590,37 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
         builder: (context, constraints) {
           final isWide = constraints.maxWidth >= 960;
           if (isWide) {
-            return SingleChildScrollView(
-              padding: const EdgeInsets.all(12),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    flex: 3,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _buildStudentSection(),
-                      ],
-                    ),
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _buildTotalScoreSection(),
+                      const SizedBox(height: 16),
+                      _buildStudentSection(),
+                    ],
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    flex: 2,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _buildRouletteSection(),
-                        const SizedBox(height: 16),
-                        _buildStoreSection(),
-                      ],
-                    ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  flex: 2,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _buildRouletteSection(),
+                      const SizedBox(height: 16),
+                      _buildStoreSection(),
+                    ],
                   ),
-                ],
-              ),
-            );
+                ),
+              ],
+            ),
+          );
           }
 
           return SingleChildScrollView(
@@ -528,6 +628,8 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                _buildTotalScoreSection(),
+                const SizedBox(height: 16),
                 _buildStudentSection(),
                 const SizedBox(height: 16),
                 _buildRouletteSection(),
@@ -695,7 +797,7 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
               foreground: Colors.purple.shade700,
               onPressed: student.points >= 10
                   ? () {
-                      _adjustStudentPoints(student, -10);
+                      _adjustStudentPoints(student, -10, isRoulette: true);
                       setState(() {
                         _rouletteResult = null;
                       });
@@ -992,5 +1094,352 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
         size: 24,
       ),
     );
+  }
+
+  Widget _buildTotalScoreSection() {
+    const maxScore = 2000;
+    final totalScore = _totalScore;
+    final ratio = totalScore / maxScore;
+    final clampedRatio = ratio.clamp(0.0, 1.0);
+
+    // 보상 목표점수 정렬 (낮은 점수부터)
+    final sortedGoals = List<RewardGoal>.from(_rewardGoals)
+      ..sort((a, b) => a.targetScore.compareTo(b.targetScore));
+
+    return Card(
+      elevation: 3,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  '전체 점수 현황',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  '$totalScore / $maxScore 점',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.teal.shade700,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            // 세로 막대 그래프
+            SizedBox(
+              height: 300,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: Stack(
+                      children: [
+                        // 배경 그리드
+                        Column(
+                          children: [
+                            for (var i = 10; i >= 0; i--)
+                              Expanded(
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    border: Border(
+                                      bottom: BorderSide(
+                                        color: Colors.grey.shade300,
+                                        width: 0.5,
+                                      ),
+                                    ),
+                                  ),
+                                  child: Align(
+                                    alignment: Alignment.centerRight,
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(right: 8),
+                                      child: Text(
+                                        '${i * 200}',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: Colors.grey.shade600,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        // 막대 그래프
+                        Align(
+                          alignment: Alignment.bottomCenter,
+                          child: Container(
+                            width: double.infinity,
+                            height: 300 * clampedRatio,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.bottomCenter,
+                                end: Alignment.topCenter,
+                                colors: [
+                                  Colors.teal.shade400,
+                                  Colors.tealAccent.shade400,
+                                ],
+                              ),
+                              borderRadius: const BorderRadius.only(
+                                topLeft: Radius.circular(8),
+                                topRight: Radius.circular(8),
+                              ),
+                            ),
+                            child: Stack(
+                              children: [
+                                // 보상 목표선
+                                for (final goal in sortedGoals)
+                                  if (goal.targetScore <= maxScore)
+                                    Positioned(
+                                      bottom: (goal.targetScore / maxScore) * 300 - 1,
+                                      left: 0,
+                                      right: 0,
+                                      child: Container(
+                                        height: 2,
+                                        color: totalScore >= goal.targetScore
+                                            ? Colors.green.shade600
+                                            : Colors.orange.shade600,
+                                        child: Row(
+                                          children: [
+                                            Expanded(
+                                              child: Container(
+                                                color: totalScore >= goal.targetScore
+                                                    ? Colors.green.shade600
+                                                    : Colors.orange.shade600,
+                                              ),
+                                            ),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 6,
+                                                vertical: 2,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: totalScore >= goal.targetScore
+                                                    ? Colors.green.shade600
+                                                    : Colors.orange.shade600,
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                              child: Text(
+                                                '${goal.targetScore}점',
+                                                style: const TextStyle(
+                                                  fontSize: 10,
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // 보상 목록
+                  SizedBox(
+                    width: 200,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          '보상 목표',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        if (sortedGoals.isEmpty)
+                          Text(
+                            '보상 목표가 없습니다',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                            ),
+                          )
+                        else
+                          Expanded(
+                            child: ListView.builder(
+                              shrinkWrap: true,
+                              itemCount: sortedGoals.length,
+                              itemBuilder: (context, index) {
+                                final goal = sortedGoals[index];
+                                final isAchieved = totalScore >= goal.targetScore;
+                                return Container(
+                                  margin: const EdgeInsets.only(bottom: 8),
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: isAchieved
+                                        ? Colors.green.shade50
+                                        : Colors.grey.shade50,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: isAchieved
+                                          ? Colors.green.shade300
+                                          : Colors.grey.shade300,
+                                    ),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Icon(
+                                            isAchieved
+                                                ? Icons.check_circle
+                                                : Icons.radio_button_unchecked,
+                                            size: 16,
+                                            color: isAchieved
+                                                ? Colors.green.shade700
+                                                : Colors.grey.shade600,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            '${goal.targetScore}점',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                              color: isAchieved
+                                                  ? Colors.green.shade700
+                                                  : Colors.grey.shade700,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        goal.reward,
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: isAchieved
+                                              ? Colors.green.shade800
+                                              : Colors.grey.shade700,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 8),
+            // 보상 목표 관리
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _rewardGoalScoreController,
+                    decoration: const InputDecoration(
+                      labelText: '목표 점수 (100점 단위)',
+                      hintText: '예) 100, 200, 300...',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    keyboardType: TextInputType.number,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 2,
+                  child: TextField(
+                    controller: _rewardGoalRewardController,
+                    decoration: const InputDecoration(
+                      labelText: '보상 내용',
+                      hintText: '예) 간식 파티',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: _addRewardGoal,
+                  child: const Text('추가'),
+                ),
+              ],
+            ),
+            if (sortedGoals.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: sortedGoals.map((goal) {
+                  return Chip(
+                    label: Text('${goal.targetScore}점: ${goal.reward}'),
+                    onDeleted: () => _removeRewardGoal(goal),
+                    deleteIcon: const Icon(Icons.close, size: 18),
+                  );
+                }).toList(),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _addRewardGoal() {
+    if (!_isDataLoaded) {
+      return;
+    }
+
+    final scoreText = _rewardGoalScoreController.text.trim();
+    final reward = _rewardGoalRewardController.text.trim();
+
+    if (scoreText.isEmpty || reward.isEmpty) {
+      return;
+    }
+
+    final score = int.tryParse(scoreText);
+    if (score == null || score <= 0 || score > 2000) {
+      return;
+    }
+
+    // 100점 단위 확인
+    if (score % 100 != 0) {
+      return;
+    }
+
+    // 이미 존재하는 점수인지 확인
+    if (_rewardGoals.any((goal) => goal.targetScore == score)) {
+      return;
+    }
+
+    setState(() {
+      _rewardGoals.add(RewardGoal(targetScore: score, reward: reward));
+      _rewardGoalScoreController.clear();
+      _rewardGoalRewardController.clear();
+    });
+    unawaited(_persistData());
+  }
+
+  void _removeRewardGoal(RewardGoal goal) {
+    if (!_isDataLoaded) {
+      return;
+    }
+
+    setState(() {
+      _rewardGoals.remove(goal);
+    });
+    unawaited(_persistData());
   }
 }
