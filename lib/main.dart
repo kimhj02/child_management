@@ -1114,11 +1114,12 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  '전체 점수 현황',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                const Expanded(
+                  child: Text(
+                    '전체 점수 현황',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
                 ),
                 Text(
                   '$totalScore / $maxScore 점',
@@ -1126,6 +1127,15 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
                     color: Colors.teal.shade700,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                FilledButton.tonalIcon(
+                  onPressed: totalScore > 0 ? _confirmResetTotalScore : null,
+                  icon: const Icon(Icons.restart_alt),
+                  label: const Text('전체 점수 초기화'),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
                   ),
                 ),
               ],
@@ -1441,5 +1451,40 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
       _rewardGoals.remove(goal);
     });
     unawaited(_persistData());
+  }
+
+  Future<void> _confirmResetTotalScore() async {
+    if (!_isDataLoaded || _totalScore <= 0) {
+      return;
+    }
+
+    final shouldReset = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('전체 점수 초기화'),
+          content: const Text('전체 점수를 0점으로 초기화할까요? 학생 개별 점수는 유지됩니다.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('취소'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('초기화'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldReset != true) {
+      return;
+    }
+
+    setState(() {
+      _totalScore = 0;
+    });
+    await _persistData();
   }
 }
