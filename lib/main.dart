@@ -39,15 +39,18 @@ class StudentShopApp extends StatelessWidget {
 class Student {
   Student({
     required this.name,
+    this.studentNumber = '',
     this.points = 0,
   });
 
   final String name;
+  final String studentNumber;
   int points;
 
   factory Student.fromJson(Map<String, dynamic> json) {
     return Student(
       name: json['name'] as String? ?? '',
+      studentNumber: json['studentNumber'] as String? ?? '',
       points: (json['points'] as num?)?.toInt() ?? 0,
     );
   }
@@ -55,9 +58,15 @@ class Student {
   Map<String, dynamic> toJson() {
     return {
       'name': name,
+      'studentNumber': studentNumber,
       'points': points,
     };
   }
+}
+
+enum StudentSortOption {
+  nameAsc,
+  pointsDesc,
 }
 
 class StoreItem {
@@ -292,6 +301,101 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
   bool _isSpinning = false;
   bool _isDataLoaded = false;
 
+  int _selectedMenuIndex = 0;
+  String _studentSearchQuery = '';
+  StudentSortOption _studentSortOption = StudentSortOption.nameAsc;
+
+  bool _isGiveCookieMode = false;
+  int _giveCookieAmount = 1;
+  static const int _rouletteCost = 10;
+  final Set<Student> _selectedStudentsForGiveCookie = <Student>{};
+
+  Widget _buildGiveCookiePanel() {
+    return Builder(
+      builder: (context) {
+        final countController =
+            TextEditingController(text: _giveCookieAmount.toString());
+
+        return Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 360),
+            child: Material(
+              elevation: 4,
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  children: [
+                    const Text(
+                      '포인트 지급',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    SizedBox(
+                      width: 72,
+                      child: TextField(
+                        controller: countController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          labelText: '개수',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          _isGiveCookieMode = false;
+                          _selectedStudentsForGiveCookie.clear();
+                        });
+                      },
+                      child: const Text('취소'),
+                    ),
+                    const SizedBox(width: 4),
+                    FilledButton(
+                      onPressed: () {
+                        final parsed =
+                            int.tryParse(countController.text.trim()) ?? 0;
+                        if (parsed <= 0 ||
+                            _selectedStudentsForGiveCookie.isEmpty) {
+                          setState(() {
+                            _isGiveCookieMode = false;
+                            _selectedStudentsForGiveCookie.clear();
+                          });
+                          return;
+                        }
+                        setState(() {
+                          _giveCookieAmount = parsed;
+                          for (final student
+                              in _selectedStudentsForGiveCookie.toList()) {
+                            _adjustStudentPoints(student, parsed);
+                          }
+                          _isGiveCookieMode = false;
+                          _selectedStudentsForGiveCookie.clear();
+                        });
+                      },
+                      child: const Text('지급'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   static const double _rouletteWheelSize = 200;
   static const List<Color> _rouletteSliceColors = [
     Color(0xFF00897B),
@@ -334,6 +438,7 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
           payload.students.map(
             (student) => Student(
               name: student.name,
+              studentNumber: student.studentNumber,
               points: student.points,
             ),
           ),
@@ -374,6 +479,7 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
           .map(
             (student) => Student(
               name: student.name,
+              studentNumber: student.studentNumber,
               points: student.points,
             ),
           )
@@ -423,7 +529,7 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
     }
 
     setState(() {
-      // 학생 삭제 시 그 학생의 포인트만큼 total_score에서 차감
+      // 학생 삭제 시, 그 학생이 가지고 있던 포인트만큼 전체 점수에서 차감
       _totalScore = max(0, _totalScore - student.points);
       _students.remove(student);
     });
@@ -581,241 +687,777 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('학생 상점 관리자'),
-      ),
-      body: !_isDataLoaded
-          ? const Center(child: CircularProgressIndicator())
-          : LayoutBuilder(
-        builder: (context, constraints) {
-          final isWide = constraints.maxWidth >= 960;
-          if (isWide) {
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      backgroundColor: const Color(0xFFF5F7FB),
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Row(
               children: [
+                _buildSidebar(),
                 Expanded(
-                  flex: 3,
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      _buildTotalScoreSection(),
-                      const SizedBox(height: 16),
-                      _buildStudentSection(),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  flex: 2,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _buildRouletteSection(),
-                      const SizedBox(height: 16),
-                      _buildStoreSection(),
+                      _buildTopBar(),
+                      const Divider(height: 1),
+                      Expanded(
+                        child: !_isDataLoaded
+                            ? const Center(child: CircularProgressIndicator())
+                            : Padding(
+                                padding: const EdgeInsets.all(24),
+                                child: _buildMainContent(),
+                              ),
+                      ),
                     ],
                   ),
                 ),
               ],
+            ),
+            if (_isGiveCookieMode) ...[
+              IgnorePointer(
+                ignoring: true,
+                child: Container(
+                  color: Colors.black.withValues(alpha: 0.35),
+                ),
+              ),
+              Positioned(
+                top: 56,
+                left: 220 + 24,
+                right: 24,
+                child: _buildGiveCookiePanel(),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSidebar() {
+    return Container(
+      width: 220,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 16,
+            offset: const Offset(2, 0),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+            child: Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Color(0xFFE0F2F1),
+                  ),
+                  child: const Icon(
+                    Icons.emoji_events_outlined,
+                    color: Colors.teal,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '학생 상점',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        '관리자 대시보드',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          const SizedBox(height: 8),
+          _buildSidebarItem(
+            index: 0,
+            icon: Icons.people_alt_outlined,
+            label: '학생 목록',
+          ),
+          _buildSidebarItem(
+            index: 1,
+            icon: Icons.insights_outlined,
+            label: '전체 점수 보기',
+          ),
+          _buildSidebarItem(
+            index: 2,
+            icon: Icons.casino_outlined,
+            label: '상점 룰렛',
+          ),
+          _buildSidebarItem(
+            index: 3,
+            icon: Icons.storefront_outlined,
+            label: '상점 상품 관리',
+          ),
+          const Spacer(),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Text(
+              '오늘도 즐거운 수업 되세요!',
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.grey.shade600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSidebarItem({
+    required int index,
+    required IconData icon,
+    required String label,
+  }) {
+    final isSelected = _selectedMenuIndex == index;
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _selectedMenuIndex = index;
+        });
+      },
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFFE3F2E8) : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              size: 20,
+              color: isSelected ? Colors.teal.shade700 : Colors.grey.shade700,
+            ),
+            const SizedBox(width: 10),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                color: isSelected ? Colors.teal.shade800 : Colors.grey.shade800,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTopBar() {
+    final sectionLabel = switch (_selectedMenuIndex) {
+      0 => '학생 목록 관리',
+      1 => '전체 점수 & 보상 현황',
+      2 => '상점 룰렛',
+      3 => '상점 상품 관리',
+      _ => '대시보드',
+    };
+
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isCompact = constraints.maxWidth < 720;
+
+          final titleBlock = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '학생 상점 관리자',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                sectionLabel,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+            ],
+          );
+
+          final statusChip = Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE0F2F1),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: const Text(
+              '실시간 관리',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Colors.teal,
+              ),
             ),
           );
+
+          final searchAndSort = _selectedMenuIndex == 0
+              ? _buildStudentSearchAndSortRow(isCompact: isCompact)
+              : const SizedBox.shrink();
+
+          if (isCompact) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(child: titleBlock),
+                    const SizedBox(width: 8),
+                    statusChip,
+                  ],
+                ),
+                if (_selectedMenuIndex == 0) ...[
+                  const SizedBox(height: 12),
+                  searchAndSort,
+                ],
+              ],
+            );
           }
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _buildTotalScoreSection(),
-                const SizedBox(height: 16),
-                _buildStudentSection(),
-                const SizedBox(height: 16),
-                _buildRouletteSection(),
-                const SizedBox(height: 16),
-                _buildStoreSection(),
-              ],
-            ),
+          return Row(
+            children: [
+              titleBlock,
+              const SizedBox(width: 16),
+              statusChip,
+              const Spacer(),
+              if (_selectedMenuIndex == 0) searchAndSort,
+            ],
           );
         },
       ),
     );
   }
 
-  Widget _buildStudentSection() {
-    const maxPoints = 100;
+  Widget _buildStudentSearchAndSortRow({required bool isCompact}) {
+    final searchField = TextField(
+      decoration: InputDecoration(
+        isDense: true,
+        prefixIcon: const Icon(
+          Icons.search,
+          size: 18,
+        ),
+        hintText: '학생 이름 검색',
+        filled: true,
+        fillColor: const Color(0xFFF5F7FB),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(999),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(999),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      ),
+      onChanged: (value) {
+        setState(() {
+          _studentSearchQuery = value;
+        });
+      },
+    );
 
-    return Card(
-      elevation: 3,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '학생 관리',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+    final sortDropdown = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.grey.shade300),
+        color: Colors.white,
+      ),
+      child: DropdownButton<StudentSortOption>(
+        value: _studentSortOption,
+        underline: const SizedBox.shrink(),
+        icon: const Icon(
+          Icons.keyboard_arrow_down_rounded,
+          size: 18,
+        ),
+        style: const TextStyle(fontSize: 12),
+        onChanged: (value) {
+          if (value == null) {
+            return;
+          }
+          setState(() {
+            _studentSortOption = value;
+          });
+        },
+        items: const [
+          DropdownMenuItem(
+            value: StudentSortOption.nameAsc,
+            child: Text('이름순'),
+          ),
+          DropdownMenuItem(
+            value: StudentSortOption.pointsDesc,
+            child: Text('점수 높은순'),
+          ),
+        ],
+      ),
+    );
+
+    if (isCompact) {
+      return Row(
+        children: [
+          Expanded(
+            child: SizedBox(
+              height: 40,
+              child: searchField,
             ),
-            const SizedBox(height: 12),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _studentNameController,
-                    decoration: const InputDecoration(
-                      labelText: '학생 이름',
-                      hintText: '예) 김철수',
-                      border: OutlineInputBorder(),
-                    ),
-                    onSubmitted: (_) => _addStudent(),
-                  ),
+          ),
+          const SizedBox(width: 12),
+          sortDropdown,
+        ],
+      );
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 220,
+          height: 40,
+          child: searchField,
+        ),
+        const SizedBox(width: 12),
+        sortDropdown,
+      ],
+    );
+  }
+
+  Widget _buildMainContent() {
+    switch (_selectedMenuIndex) {
+      case 0:
+        return SingleChildScrollView(
+          child: _buildStudentSection(),
+        );
+      case 1:
+        // 전체 점수 보기: 화면을 가득 채우는 느낌으로 중앙 정렬
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: constraints.maxHeight,
                 ),
-                const SizedBox(width: 12),
-                SizedBox(
-                  height: 48,
-                  child: FilledButton(
-                    onPressed: _addStudent,
-                    child: const Text('추가'),
-                  ),
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: _buildTotalScoreSection(),
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            const Divider(height: 24),
-            const Text(
-              '학생 포인트 현황 (최대 100점)',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 12),
-            if (_students.isEmpty)
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: 16),
-                  child: Text('등록된 학생이 없습니다.'),
+              ),
+            );
+          },
+        );
+      case 2:
+        // 상점 룰렛 화면: 룰렛 섹션만 가득 차게
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: constraints.maxHeight,
                 ),
-              )
-            else
-              Column(
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: _buildRouletteSection(),
+                ),
+              ),
+            );
+          },
+        );
+      case 3:
+        // 상점 상품 관리 화면: 상품 관리 섹션만 가득 차게
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: constraints.maxHeight,
+                ),
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: _buildStoreSection(),
+                ),
+              ),
+            );
+          },
+        );
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  Widget _buildStudentSection() {
+    final visibleStudents = _filteredSortedStudents();
+
+    return Padding(
+      padding: const EdgeInsets.all(4),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isCompact = constraints.maxWidth < 720;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 포인트 지급 버튼
+              Row(
                 children: [
-                  for (var i = 0; i < _students.length; i++)
-                    Padding(
-                      padding: EdgeInsets.only(bottom: i == _students.length - 1 ? 0 : 16),
-                      child: _buildStudentBarRow(_students[i], maxPoints),
-                    ),
+                  FilledButton.tonal(
+                    onPressed: _students.isEmpty
+                        ? null
+                        : () {
+                            setState(() {
+                              if (_isGiveCookieMode) {
+                                _isGiveCookieMode = false;
+                                _selectedStudentsForGiveCookie.clear();
+                              } else {
+                                if (_giveCookieAmount <= 0) {
+                                  _giveCookieAmount = 1;
+                                }
+                                _isGiveCookieMode = true;
+                                _selectedStudentsForGiveCookie.clear();
+                              }
+                            });
+                          },
+                    child:
+                        Text(_isGiveCookieMode ? '포인트 지급 종료' : '포인트 지급'),
+                  ),
                 ],
               ),
+              const SizedBox(height: 16),
+              // 학생 카드들 + 추가 카드 (가로 스크롤)
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    for (var i = 0; i < visibleStudents.length; i++) ...[
+                      _buildStudentTile(
+                        index: i + 1,
+                        student: visibleStudents[i],
+                      ),
+                      const SizedBox(width: 12),
+                    ],
+                    _buildStudentAddTile(width: 116),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  List<Student> _filteredSortedStudents() {
+    Iterable<Student> result = _students;
+    final query = _studentSearchQuery.trim().toLowerCase();
+    if (query.isNotEmpty) {
+      result = result.where(
+        (student) => student.name.toLowerCase().contains(query),
+      );
+    }
+
+    int parseNumber(Student s) {
+      final numOnly =
+          s.studentNumber.replaceAll(RegExp(r'[^0-9]'), '').trim();
+      return int.tryParse(numOnly.isEmpty ? s.studentNumber : numOnly) ??
+          1000000;
+    }
+
+    final list = result.toList();
+    list.sort((a, b) {
+      final an = parseNumber(a);
+      final bn = parseNumber(b);
+      final cmp = an.compareTo(bn);
+      if (cmp != 0) {
+        return cmp;
+      }
+      return a.name.compareTo(b.name);
+    });
+    return list;
+  }
+
+  Future<void> _showAddStudentDialog() async {
+    if (!_isDataLoaded) {
+      return;
+    }
+
+    final numberController = TextEditingController();
+    final nameController = TextEditingController();
+    final result = await showDialog<({String number, String name})>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('학생 추가'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: numberController,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: '학생 번호',
+                  hintText: '예) 1, 2, 3',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: '학생 이름',
+                  hintText: '예) 김철수',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('취소'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop((
+                number: numberController.text.trim(),
+                name: nameController.text.trim(),
+              )),
+              child: const Text('추가'),
+            ),
+          ],
+        );
+      },
+    );
+
+    numberController.dispose();
+    nameController.dispose();
+
+    if (result == null) {
+      return;
+    }
+
+    final number = result.number.trim();
+    final name = result.name.trim();
+    if (name.isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _students.add(
+        Student(
+          name: name,
+          studentNumber: number,
+        ),
+      );
+    });
+    unawaited(_persistData());
+  }
+
+  Widget _buildStudentAddTile({required double width}) {
+    return SizedBox(
+      width: width,
+      height: 96,
+      child: OutlinedButton(
+        style: OutlinedButton.styleFrom(
+          side: BorderSide(color: Colors.grey.shade300, width: 1),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+          backgroundColor: Colors.white,
+        ),
+        onPressed: _showAddStudentDialog,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: Colors.teal.withValues(alpha: 0.08),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.add,
+                color: Colors.teal,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              '학생 추가',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildStudentBarRow(Student student, int maxPoints) {
-    final ratio = maxPoints == 0 ? 0.0 : student.points / max(1, maxPoints);
-    final clamped = ratio.clamp(0.0, 1.0);
+  Widget _buildStudentTile({
+    required int index,
+    required Student student,
+  }) {
+    final bool isSelectedForGiveCookie =
+        _isGiveCookieMode && _selectedStudentsForGiveCookie.contains(student);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
+    return InkWell(
+      onTap: _isGiveCookieMode
+          ? () {
+              setState(() {
+                if (isSelectedForGiveCookie) {
+                  _selectedStudentsForGiveCookie.remove(student);
+                } else {
+                  _selectedStudentsForGiveCookie.add(student);
+                }
+              });
+            }
+          : null,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        width: 160,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isSelectedForGiveCookie
+              ? Colors.teal.withValues(alpha: 0.06)
+              : Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelectedForGiveCookie
+                ? Colors.teal.shade400
+                : Colors.grey.shade300,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(
-              width: 110,
-              child: Text(
-                student.name,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
+            Row(
+              children: [
+                Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(6),
+                    color: Colors.grey.shade100,
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    '$index',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: SizedBox(
-                  height: 20,
-                  child: Stack(
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        height: 20,
-                        decoration: BoxDecoration(
-                          color: Colors.teal.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(10),
+                      Text(
+                        student.name,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        student.studentNumber.isNotEmpty
+                            ? '${student.studentNumber} 번'
+                            : '- 번',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey.shade700,
                         ),
                       ),
-                      FractionallySizedBox(
-                        alignment: Alignment.centerLeft,
-                        widthFactor: clamped,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                Colors.teal.shade400,
-                                Colors.tealAccent.shade400,
-                              ],
-                            ),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${student.points} 포인트',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey.shade700,
                         ),
                       ),
                     ],
                   ),
                 ),
-              ),
-            ),
-            SizedBox(
-              width: 68,
-              child: Text(
-                '${student.points}점',
-                textAlign: TextAlign.end,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
+                IconButton(
+                  tooltip: '학생 삭제',
+                  iconSize: 18,
+                  padding: EdgeInsets.zero,
+                  constraints:
+                      const BoxConstraints.tightFor(width: 28, height: 28),
+                  icon: const Icon(Icons.close),
+                  onPressed: () => _removeStudent(student),
                 ),
-              ),
+              ],
             ),
-            const SizedBox(width: 8),
-            _buildPointActionButton(
-              label: '+1',
-              background: Colors.teal.shade50,
-              foreground: Colors.teal.shade700,
-              onPressed: () => _adjustStudentPoints(student, 1),
-            ),
-            const SizedBox(width: 6),
-            _buildPointActionButton(
-              label: '-1',
-              background: Colors.orange.shade50,
-              foreground: Colors.orange.shade800,
-              onPressed: () => _adjustStudentPoints(student, -1),
-            ),
-            const SizedBox(width: 6),
-            _buildPointActionButton(
-              label: '룰렛',
-              background: Colors.purple.shade50,
-              foreground: Colors.purple.shade700,
-              onPressed: student.points >= 10
-                  ? () {
-                      _adjustStudentPoints(student, -10, isRoulette: true);
-                      setState(() {
-                        _rouletteResult = null;
-                      });
-                    }
-                  : null,
-            ),
-            const SizedBox(width: 6),
-            IconButton(
-              tooltip: '학생 삭제',
-              iconSize: 20,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints.tightFor(width: 32, height: 32),
-              icon: const Icon(Icons.delete_outline),
-              onPressed: () => _removeStudent(student),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                _buildPointActionButton(
+                  label: '+1',
+                  background: Colors.teal.shade50,
+                  foreground: Colors.teal.shade700,
+                  onPressed: () => _adjustStudentPoints(student, 1),
+                ),
+                const SizedBox(width: 4),
+                _buildPointActionButton(
+                  label: '-1',
+                  background: Colors.orange.shade50,
+                  foreground: Colors.orange.shade800,
+                  onPressed: () => _adjustStudentPoints(student, -1),
+                ),
+                const SizedBox(width: 4),
+                _buildPointActionButton(
+                  label: '룰렛',
+                  background: Colors.purple.shade50,
+                  foreground: Colors.purple.shade700,
+                  onPressed: student.points >= _rouletteCost
+                      ? () => _adjustStudentPoints(
+                            student,
+                            -_rouletteCost,
+                            isRoulette: true,
+                          )
+                      : null,
+                ),
+              ],
             ),
           ],
         ),
-      ],
+      ),
     );
   }
 
@@ -826,8 +1468,8 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
     VoidCallback? onPressed,
   }) {
     return SizedBox(
-      height: 32,
-      width: 48,
+      height: 30,
+      width: 40,
       child: FilledButton.tonal(
         onPressed: onPressed,
         style: FilledButton.styleFrom(
@@ -842,100 +1484,106 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
   }
 
   Widget _buildStoreSection() {
-    return Card(
-      elevation: 3,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '룰렛 상품 관리',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '룰렛에 사용할 상품을 등록하세요. 활성화된 상품만 룰렛에 포함됩니다.',
-              style: TextStyle(color: Colors.grey.shade700),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _itemNameController,
-              decoration: const InputDecoration(
-                labelText: '아이템 이름',
-                hintText: '예) 간식 쿠폰',
-                border: OutlineInputBorder(),
+    return SizedBox(
+      width: double.infinity,
+      child: Card(
+        elevation: 3,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '룰렛 상품 관리',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
-              onSubmitted: (_) => _addStoreItem(),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: _addStoreItem,
-                child: const Text('아이템 추가'),
+              const SizedBox(height: 8),
+              Text(
+                '룰렛에 사용할 상품을 등록하세요. 활성화된 상품만 룰렛에 포함됩니다.',
+                style: TextStyle(color: Colors.grey.shade700),
               ),
-            ),
-            const Divider(height: 32),
-            if (_storeItems.isEmpty)
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: 16),
-                  child: Text('등록된 상품이 없습니다.'),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _itemNameController,
+                decoration: const InputDecoration(
+                  labelText: '아이템 이름',
+                  hintText: '예) 간식 쿠폰',
+                  border: OutlineInputBorder(),
                 ),
-              )
-            else
-              Column(
-                children: _storeItems.map((item) {
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey.shade200),
-                    ),
-                    child: ListTile(
-                      contentPadding:
-                          const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      dense: true,
-                      title: Text(
-                        item.name,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      subtitle: Text(
-                        item.isActive ? '룰렛에 포함됨' : '룰렛에서 제외됨',
-                        style: TextStyle(
-                          color: item.isActive
-                              ? Colors.teal.shade600
-                              : Colors.grey.shade600,
-                          fontSize: 13,
-                        ),
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Transform.scale(
-                            scale: 0.9,
-                            child: Switch(
-                              value: item.isActive,
-                              onChanged: (value) => _toggleItemActive(item, value),
-                            ),
-                          ),
-                          IconButton(
-                            tooltip: '아이템 삭제',
-                            icon: const Icon(Icons.delete_outline),
-                            onPressed: () => _removeStoreItem(item),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                }).toList(),
+                onSubmitted: (_) => _addStoreItem(),
               ),
-          ],
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: _addStoreItem,
+                  child: const Text('아이템 추가'),
+                ),
+              ),
+              const Divider(height: 32),
+              if (_storeItems.isEmpty)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    child: Text('등록된 상품이 없습니다.'),
+                  ),
+                )
+              else
+                Column(
+                  children: _storeItems.map((item) {
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey.shade200),
+                      ),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        dense: true,
+                        title: Text(
+                          item.name,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        subtitle: Text(
+                          item.isActive ? '룰렛에 포함됨' : '룰렛에서 제외됨',
+                          style: TextStyle(
+                            color: item.isActive
+                                ? Colors.teal.shade600
+                                : Colors.grey.shade600,
+                            fontSize: 13,
+                          ),
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Transform.scale(
+                              scale: 0.9,
+                              child: Switch(
+                                value: item.isActive,
+                                onChanged: (value) =>
+                                    _toggleItemActive(item, value),
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: '아이템 삭제',
+                              icon: const Icon(Icons.delete_outline),
+                              onPressed: () => _removeStoreItem(item),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -946,9 +1594,11 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
     final group = _createRouletteGroup(activeItems);
     final canSpin = !_isSpinning && group != null;
 
-    return Card(
-      elevation: 3,
-      child: Padding(
+    return SizedBox(
+      width: double.infinity,
+      child: Card(
+        elevation: 3,
+        child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1047,6 +1697,7 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
               ),
           ],
         ),
+        ),
       ),
     );
   }
@@ -1138,6 +1789,17 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                   ),
                 ),
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: _isDataLoaded ? _confirmResetAllData : null,
+                  child: Text(
+                    '모든 데이터 초기화',
+                    style: TextStyle(
+                      color: Colors.red.shade700,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 16),
@@ -1185,6 +1847,7 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
                         Align(
                           alignment: Alignment.bottomCenter,
                           child: Container(
+                            margin: const EdgeInsets.only(right: 32),
                             width: double.infinity,
                             height: 300 * clampedRatio,
                             decoration: BoxDecoration(
@@ -1359,8 +2022,8 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
                   child: TextField(
                     controller: _rewardGoalScoreController,
                     decoration: const InputDecoration(
-                      labelText: '목표 점수 (100점 단위)',
-                      hintText: '예) 100, 200, 300...',
+                      labelText: '목표 점수 (50점 단위)',
+                      hintText: '예) 50, 100, 150...',
                       border: OutlineInputBorder(),
                       isDense: true,
                     ),
@@ -1424,8 +2087,8 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
       return;
     }
 
-    // 100점 단위 확인
-    if (score % 100 != 0) {
+    // 50점 단위 확인
+    if (score % 50 != 0) {
       return;
     }
 
@@ -1484,6 +2147,49 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
 
     setState(() {
       _totalScore = 0;
+    });
+    await _persistData();
+  }
+
+  Future<void> _confirmResetAllData() async {
+    if (!_isDataLoaded) {
+      return;
+    }
+
+    final shouldReset = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('모든 데이터 초기화'),
+          content: const Text(
+            '학생 목록, 상품, 보상 목표, 전체 점수를 모두 삭제하고 0에서 다시 시작할까요?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('취소'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('초기화'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldReset != true) {
+      return;
+    }
+
+    setState(() {
+      _students.clear();
+      _storeItems.clear();
+      _rewardGoals.clear();
+      _totalScore = 0;
+      _rouletteResult = null;
+      _selectedStudentsForGiveCookie.clear();
+      _isGiveCookieMode = false;
     });
     await _persistData();
   }

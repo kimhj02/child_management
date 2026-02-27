@@ -38,7 +38,6 @@ void main() {
 
     expect(find.text('학생 상점 관리자'), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 100));
-    expect(find.text('학생 관리'), findsOneWidget);
-    expect(find.text('상점 룰렛'), findsOneWidget);
+    expect(find.text('학생 목록'), findsWidgets);
   });
 }
