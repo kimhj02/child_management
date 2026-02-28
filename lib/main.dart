@@ -287,8 +287,6 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
   int _totalScore = 0;
   late final LocalDataStore _dataStore;
 
-  final TextEditingController _studentNameController = TextEditingController();
-
   final TextEditingController _itemNameController = TextEditingController();
   
   final TextEditingController _rewardGoalScoreController = TextEditingController();
@@ -417,7 +415,6 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
 
   @override
   void dispose() {
-    _studentNameController.dispose();
     _itemNameController.dispose();
     _rewardGoalScoreController.dispose();
     _rewardGoalRewardController.dispose();
@@ -499,28 +496,6 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
           .toList(growable: false),
       totalScore: _totalScore,
     );
-  }
-
-  void _addStudent() {
-    if (!_isDataLoaded) {
-      return;
-    }
-
-    final name = _studentNameController.text.trim();
-
-    if (name.isEmpty) {
-      return;
-    }
-
-    setState(() {
-      _students.add(
-        Student(
-          name: name,
-        ),
-      );
-      _studentNameController.clear();
-    });
-    unawaited(_persistData());
   }
 
   void _removeStudent(Student student) {
@@ -1123,8 +1098,6 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
       padding: const EdgeInsets.all(4),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final isCompact = constraints.maxWidth < 720;
-
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
