@@ -1098,6 +1098,12 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
       padding: const EdgeInsets.all(4),
       child: LayoutBuilder(
         builder: (context, constraints) {
+          const columns = 8;
+          const spacing = 12.0;
+          final totalSpacing = spacing * (columns - 1);
+          final tileWidth =
+              ((constraints.maxWidth - totalSpacing) / columns).clamp(80.0, 220.0);
+
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1127,21 +1133,24 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
                 ],
               ),
               const SizedBox(height: 16),
-              // 학생 카드들 + 추가 카드 (가로 스크롤)
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    for (var i = 0; i < visibleStudents.length; i++) ...[
-                      _buildStudentTile(
+              // 학생 카드들 + 추가 카드 (8명 단위로 줄바꿈)
+              Wrap(
+                spacing: spacing,
+                runSpacing: 12,
+                children: [
+                  for (var i = 0; i < visibleStudents.length; i++)
+                    SizedBox(
+                      width: tileWidth,
+                      child: _buildStudentTile(
                         index: i + 1,
                         student: visibleStudents[i],
                       ),
-                      const SizedBox(width: 12),
-                    ],
-                    _buildStudentAddTile(width: 116),
-                  ],
-                ),
+                    ),
+                  SizedBox(
+                    width: tileWidth,
+                    child: _buildStudentAddTile(width: tileWidth),
+                  ),
+                ],
               ),
             ],
           );
@@ -1318,7 +1327,7 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
           : null,
       borderRadius: BorderRadius.circular(8),
       child: Container(
-        width: 160,
+        width: double.infinity,
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: isSelectedForGiveCookie
@@ -1398,35 +1407,39 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
               ],
             ),
             const SizedBox(height: 8),
-            Row(
-              children: [
-                _buildPointActionButton(
-                  label: '+1',
-                  background: Colors.teal.shade50,
-                  foreground: Colors.teal.shade700,
-                  onPressed: () => _adjustStudentPoints(student, 1),
-                ),
-                const SizedBox(width: 4),
-                _buildPointActionButton(
-                  label: '-1',
-                  background: Colors.orange.shade50,
-                  foreground: Colors.orange.shade800,
-                  onPressed: () => _adjustStudentPoints(student, -1),
-                ),
-                const SizedBox(width: 4),
-                _buildPointActionButton(
-                  label: '룰렛',
-                  background: Colors.purple.shade50,
-                  foreground: Colors.purple.shade700,
-                  onPressed: student.points >= _rouletteCost
-                      ? () => _adjustStudentPoints(
-                            student,
-                            -_rouletteCost,
-                            isRoulette: true,
-                          )
-                      : null,
-                ),
-              ],
+            FittedBox(
+              alignment: Alignment.centerLeft,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildPointActionButton(
+                    label: '+1',
+                    background: Colors.teal.shade50,
+                    foreground: Colors.teal.shade700,
+                    onPressed: () => _adjustStudentPoints(student, 1),
+                  ),
+                  const SizedBox(width: 4),
+                  _buildPointActionButton(
+                    label: '-1',
+                    background: Colors.orange.shade50,
+                    foreground: Colors.orange.shade800,
+                    onPressed: () => _adjustStudentPoints(student, -1),
+                  ),
+                  const SizedBox(width: 4),
+                  _buildPointActionButton(
+                    label: '룰렛',
+                    background: Colors.purple.shade50,
+                    foreground: Colors.purple.shade700,
+                    onPressed: student.points >= _rouletteCost
+                        ? () => _adjustStudentPoints(
+                              student,
+                              -_rouletteCost,
+                              isRoulette: true,
+                            )
+                        : null,
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -1442,13 +1455,12 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
   }) {
     return SizedBox(
       height: 30,
-      width: 40,
       child: FilledButton.tonal(
         onPressed: onPressed,
         style: FilledButton.styleFrom(
           backgroundColor: background,
           foregroundColor: foreground,
-          padding: EdgeInsets.zero,
+          padding: EdgeInsets.symmetric(horizontal: 6),
           textStyle: const TextStyle(fontWeight: FontWeight.w700),
         ),
         child: Text(label),
