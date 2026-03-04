@@ -1345,23 +1345,6 @@ class _StudentShopHomePageState extends State<StudentShopHomePage> {
           children: [
             Row(
               children: [
-                Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(6),
-                    color: Colors.grey.shade100,
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    '$index',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
